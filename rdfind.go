@@ -15,7 +15,7 @@ import (
 
 const (
     separator = string(os.PathSeparator)
-    version = "v1.2"
+    version = "v1.3"
 )
 
 type FileInfos struct {
@@ -37,7 +37,9 @@ func showhelp () {
     fmt.Println("    3.change new find file to a symlink, need super permission")
     fmt.Println("-c channel deepness, default 65536")
     fmt.Println("-e delete empty folder")
-    fmt.Println("-v show program version")
+    fmt.Println("-j delete size is 0 file")
+    fmt.Println("-v or --version show program version")
+    fmt.Println("-h or --help show help")
 }
 
 func gethash(fpath string) (int64, string, error) {
@@ -57,28 +59,35 @@ func gethash(fpath string) (int64, string, error) {
 }
 
 func removeemptyfolder (fpath string) {
-	dir, err := ioutil.ReadDir(fpath)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	if len(dir) == 0 {
-		err2 := os.Remove(fpath)
-		if err2 != nil {
-			fmt.Println(err2)
-		}
-		index := strings.LastIndex(fpath, separator)
-		path := fpath[:index]
-		removefolder(path)
-	}
+    dir, err := ioutil.ReadDir(fpath)
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+    if len(dir) == 0 {
+        err2 := os.Remove(fpath)
+        if err2 != nil {
+            fmt.Println(err2)
+        }
+        index := strings.LastIndex(fpath, separator)
+        path := fpath[:index]
+        removeemptyfolder(path)
+    }
 }
 
-func run (ch chan string, wg *sync.WaitGroup, way int, removeempty bool) {
+func run (ch chan string, wg *sync.WaitGroup, way int, removeempty bool, delzerofile bool) {
     for fpath := range ch {
         fmt.Println("start check file:", fpath)
         size, key, err := gethash(fpath)
         if err != nil {
             fmt.Println(err)
+            continue
+        }
+        if size == 0 && delzerofile == true {
+            err2 := os.Remove(fpath)
+            if err2 != nil {
+                fmt.Println(err2)
+            }
             continue
         }
         mutex.Lock()
@@ -146,6 +155,7 @@ func main () {
     way := 0
     chanlen := 65536
     removeempty := false
+    delzerofile := false
     args := os.Args
     if args == nil {
         showhelp()
@@ -182,6 +192,8 @@ func main () {
             way = val
         } else if args[i] == "-e" {
             removeempty = true
+        } else if args[i] == "-j" {
+            delzerofile = true
         } else if args[i] == "-v" || args[i] == "--version" {
             fmt.Println(version)
             return
@@ -198,7 +210,7 @@ func main () {
     ch := make(chan string, chanlen)
     defer close(ch)
     for i := 0 ; i < threadnum ; i++ { // 同时启动threadnum个协程
-        go run(ch, &wg, way, removeempty)
+        go run(ch, &wg, way, removeempty, delzerofile)
     }
     filepath.Walk(folder, func (path string, info os.FileInfo, err error) error {
         if err != nil {
