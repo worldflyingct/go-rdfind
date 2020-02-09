@@ -15,7 +15,7 @@ import (
 
 const (
     separator = string(os.PathSeparator)
-    version = "v1.5"
+    version = "v1.8"
 )
 
 type FileInfos struct {
@@ -106,7 +106,7 @@ func run (ch chan FileInfos, wg *sync.WaitGroup, way int, removeempty bool, delz
             }
             if findsamefile { // 找到其他文件大小与sha512均相同的文件
                 if way == 0 { // 什么都不做
-                    filestorage[key] = append(val, FileInfos{size, fpath})
+                    filestorage[key] = append(val, finfo)
                 } else if way == 1 { // 删除新发现的
                     fmt.Println("delete file", fpath)
                     err2 := os.Remove(fpath)
@@ -119,7 +119,7 @@ func run (ch chan FileInfos, wg *sync.WaitGroup, way int, removeempty bool, delz
                         removeemptyfolder(path)
                     }
                 } else if way == 2 { // 删除新发现的，然后创建硬链接
-                    filestorage[key] = append(val, FileInfos{size, fpath})
+                    filestorage[key] = append(val, finfo)
                     fmt.Println("delete file and create a hard link", fpath)
                     err2 := os.Remove(fpath)
                     if err2 != nil {
@@ -130,7 +130,7 @@ func run (ch chan FileInfos, wg *sync.WaitGroup, way int, removeempty bool, delz
                         fmt.Println(err3)
                     }
                 } else if way == 3 { // 删除新发现的，然后创建软链接
-                    filestorage[key] = append(val, FileInfos{size, fpath})
+                    filestorage[key] = append(val, finfo)
                     fmt.Println("delete file and create a symlink", fpath)
                     err2 := os.Remove(fpath)
                     if err2 != nil {
@@ -142,10 +142,10 @@ func run (ch chan FileInfos, wg *sync.WaitGroup, way int, removeempty bool, delz
                     }
                 }
             } else { // 未找到其他文件大小与sha512均相同的文件
-                filestorage[key] = append(val, FileInfos{size, fpath})
+                filestorage[key] = append(val, finfo)
             }
         } else { // key不存在，新建
-            filestorage[key] = []FileInfos{{size, fpath}}
+            filestorage[key] = []FileInfos{finfo}
         }
         mutex.Unlock()
         wg.Done()
