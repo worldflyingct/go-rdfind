@@ -15,7 +15,7 @@ import (
 
 const (
     separator = string(os.PathSeparator)
-    version = "v1.3"
+    version = "v1.5"
 )
 
 type FileInfos struct {
@@ -75,19 +75,22 @@ func removeemptyfolder (fpath string) {
     }
 }
 
-func run (ch chan string, wg *sync.WaitGroup, way int, removeempty bool, delzerofile bool) {
-    for fpath := range ch {
-        fmt.Println("start check file:", fpath)
-        size, key, err := gethash(fpath)
-        if err != nil {
-            fmt.Println(err)
+func run (ch chan FileInfos, wg *sync.WaitGroup, way int, removeempty bool, delzerofile bool) {
+    for finfo := range ch {
+        fmt.Println("start check file:", finfo.fpath)
+        if finfo.size == 0 && delzerofile == true {
+            fmt.Println("file size is 0, delete", finfo.fpath)
+            err := os.Remove(finfo.fpath)
+            if err != nil {
+                fmt.Println(err)
+            }
             continue
         }
-        if size == 0 && delzerofile == true {
-            err2 := os.Remove(fpath)
-            if err2 != nil {
-                fmt.Println(err2)
-            }
+        fpath := finfo.fpath
+        size := finfo.size
+        _, key, err := gethash(fpath)
+        if err != nil {
+            fmt.Println(err)
             continue
         }
         mutex.Lock()
@@ -207,7 +210,7 @@ func main () {
         return
     }
     wg := sync.WaitGroup{}
-    ch := make(chan string, chanlen)
+    ch := make(chan FileInfos, chanlen)
     defer close(ch)
     for i := 0 ; i < threadnum ; i++ { // 同时启动threadnum个协程
         go run(ch, &wg, way, removeempty, delzerofile)
@@ -219,7 +222,7 @@ func main () {
         }
         if info.IsDir() == false { // 只有是普通文件才计算与判断
             wg.Add(1)
-            ch <- path
+            ch <- FileInfos{info.Size(), path}
         } else if removeempty {
             removeemptyfolder(path)
         }
