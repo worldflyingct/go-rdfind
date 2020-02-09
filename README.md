@@ -26,6 +26,10 @@ go语言是跨平台语言，同时使用于windows，linux。并且生成的可
 -v or --version 显示当前程序版本  
 -h or --help 显示帮助 
 
+# 编译方法
+go build rdfind.go  
+更多编译参数请参照go语言官方说明  
+
 # 代码授权
 本代码遵循GNU GENERAL PUBLIC LICENSE Version 3, 如在其他项目中使用了本代码，请依照该授权将其他相关部分代码全部开源。  
 
