@@ -69,7 +69,7 @@ func removeemptyfolder (fpath string) {
 		}
 		index := strings.LastIndex(fpath, separator)
 		path := fpath[:index]
-		removefolder (path)
+		removefolder(path)
 	}
 }
 
@@ -78,7 +78,7 @@ func run (ch chan string, wg *sync.WaitGroup, way int, removeempty bool) {
         fmt.Println("start check file:", fpath)
         size, key, err := gethash(fpath)
         if err != nil {
-            fmt.Println (err)
+            fmt.Println(err)
             continue
         }
         mutex.Lock()
@@ -87,7 +87,7 @@ func run (ch chan string, wg *sync.WaitGroup, way int, removeempty bool) {
             findsamefile := false
             vallen := len(val)
             for i :=0 ; i < vallen ; i++ {
-                if (val[i].size == size) { // 文件大小相同
+                if val[i].size == size { // 文件大小相同
                     fmt.Println("find a same file", val[i].fpath)
                     findsamefile = true
                 }
@@ -148,7 +148,7 @@ func main () {
     removeempty := false
     args := os.Args
     if args == nil {
-        showhelp ()
+        showhelp()
         return
     }
     argslen := len(args)
