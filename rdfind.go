@@ -15,7 +15,7 @@ import (
 
 const (
     separator = string(os.PathSeparator)
-    version = "v1.8"
+    version = "v2.0"
 )
 
 type FileInfos struct {
@@ -29,13 +29,11 @@ var mutex sync.Mutex
 func showhelp () {
     fmt.Println("program version: ", version)
     fmt.Println("-d folder")
-    fmt.Println("-t thread number, default 4")
     fmt.Println("-w handle way:")
     fmt.Println("    0.show same file (default)")
     fmt.Println("    1.delete new find file")
     fmt.Println("    2.change new find file to a hard link")
     fmt.Println("    3.change new find file to a symlink, need super permission")
-    fmt.Println("-c channel deepness, default 65536")
     fmt.Println("-e delete empty folder")
     fmt.Println("-j delete size is 0 file")
     fmt.Println("-v or --version show program version")
@@ -58,7 +56,7 @@ func gethash(fpath string) (int64, string, error) {
     return size, hashvalue, nil
 }
 
-func removeemptyfolder (fpath string) {
+func removeemptyfolder (fpath string, wg *sync.WaitGroup) {
     dir, err := ioutil.ReadDir(fpath)
     if err != nil {
         fmt.Println(err)
@@ -71,92 +69,91 @@ func removeemptyfolder (fpath string) {
         }
         index := strings.LastIndex(fpath, separator)
         path := fpath[:index]
-        removeemptyfolder(path)
+        removeemptyfolder(path, nil)
+    }
+    if wg != nil {
+        wg.Done()
     }
 }
 
-func run (ch chan FileInfos, wg *sync.WaitGroup, way int, removeempty bool, delzerofile bool) {
-    for finfo := range ch {
-        fmt.Println("start check file:", finfo.fpath)
-        if finfo.size == 0 && delzerofile == true {
-            fmt.Println("file size is 0, delete", finfo.fpath)
-            err := os.Remove(finfo.fpath)
-            if err != nil {
-                fmt.Println(err)
-            }
-            continue
-        }
-        fpath := finfo.fpath
-        size := finfo.size
-        _, key, err := gethash(fpath)
+func run (size int64, fpath string, way int, removeempty bool, delzerofile bool, wg *sync.WaitGroup) {
+    defer wg.Done()
+    fmt.Println("start check file:", fpath)
+    if size == 0 && delzerofile == true {
+        fmt.Println("file size is 0, delete", fpath)
+        err := os.Remove(fpath)
         if err != nil {
             fmt.Println(err)
-            continue
         }
-        mutex.Lock()
-        val, ok := filestorage[key]
-        if ok { // key存在，追加
-            findsamefile := false
-            vallen := len(val)
-            for i :=0 ; i < vallen ; i++ {
-                if val[i].size == size { // 文件大小相同
-                    fmt.Println("find a same file", val[i].fpath)
-                    findsamefile = true
-                }
-            }
-            if findsamefile { // 找到其他文件大小与sha512均相同的文件
-                if way == 0 { // 什么都不做
-                    filestorage[key] = append(val, finfo)
-                } else if way == 1 { // 删除新发现的
-                    fmt.Println("delete file", fpath)
-                    err2 := os.Remove(fpath)
-                    if err2 != nil {
-                        fmt.Println(err2)
-                    }
-                    if removeempty {
-                        index := strings.LastIndex(fpath, separator)
-                        path := fpath[:index]
-                        removeemptyfolder(path)
-                    }
-                } else if way == 2 { // 删除新发现的，然后创建硬链接
-                    filestorage[key] = append(val, finfo)
-                    fmt.Println("delete file and create a hard link", fpath)
-                    err2 := os.Remove(fpath)
-                    if err2 != nil {
-                        fmt.Println(err2)
-                    }
-                    err3 := os.Link(val[0].fpath, fpath)
-                    if err3 != nil {
-                        fmt.Println(err3)
-                    }
-                } else if way == 3 { // 删除新发现的，然后创建软链接
-                    filestorage[key] = append(val, finfo)
-                    fmt.Println("delete file and create a symlink", fpath)
-                    err2 := os.Remove(fpath)
-                    if err2 != nil {
-                        fmt.Println(err2)
-                    }
-                    err3 := os.Symlink(val[0].fpath, fpath)
-                    if err3 != nil {
-                        fmt.Println(err3)
-                    }
-                }
-            } else { // 未找到其他文件大小与sha512均相同的文件
-                filestorage[key] = append(val, finfo)
-            }
-        } else { // key不存在，新建
-            filestorage[key] = []FileInfos{finfo}
+        return
+    }
+    _, key, err := gethash(fpath)
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+    mutex.Lock()
+    defer mutex.Unlock()
+    val, ok := filestorage[key]
+    if ok == false { // key不存在，新建
+        filestorage[key] = []FileInfos{{size, fpath}}
+        return
+    }
+    // key存在，追加
+    findsamefile := false
+    vallen := len(val)
+    for i :=0 ; i < vallen ; i++ {
+        if val[i].size == size { // 文件大小相同
+            fmt.Println("find a same file", val[i].fpath)
+            findsamefile = true
         }
-        mutex.Unlock()
-        wg.Done()
+    }
+    if findsamefile == false { // 未找到其他文件大小与sha512均相同的文件
+        filestorage[key] = append(val, FileInfos{size, fpath})
+        return
+    }
+    // 找到其他文件大小与sha512均相同的文件
+    if way == 0 { // 什么都不做
+        filestorage[key] = append(val, FileInfos{size, fpath})
+    } else if way == 1 { // 删除新发现的
+        fmt.Println("delete file", fpath)
+        err2 := os.Remove(fpath)
+        if err2 != nil {
+            fmt.Println(err2)
+        }
+        if removeempty {
+            index := strings.LastIndex(fpath, separator)
+            path := fpath[:index]
+            removeemptyfolder(path, nil)
+        }
+    } else if way == 2 { // 删除新发现的，然后创建硬链接
+        filestorage[key] = append(val, FileInfos{size, fpath})
+        fmt.Println("delete file and create a hard link", fpath)
+        err2 := os.Remove(fpath)
+        if err2 != nil {
+            fmt.Println(err2)
+        }
+        err3 := os.Link(val[0].fpath, fpath)
+        if err3 != nil {
+            fmt.Println(err3)
+        }
+    } else if way == 3 { // 删除新发现的，然后创建软链接
+        filestorage[key] = append(val, FileInfos{size, fpath})
+        fmt.Println("delete file and create a symlink", fpath)
+        err2 := os.Remove(fpath)
+        if err2 != nil {
+            fmt.Println(err2)
+        }
+        err3 := os.Symlink(val[0].fpath, fpath)
+        if err3 != nil {
+            fmt.Println(err3)
+        }
     }
 }
 
 func main () {
     folder := ""
-    threadnum := 4
     way := 0
-    chanlen := 65536
     removeempty := false
     delzerofile := false
     args := os.Args
@@ -169,23 +166,7 @@ func main () {
         if args[i] == "-d" {
             i++
             folder = args[i]
-        } else if args[i] == "-t" {
-            i++
-            val, err := strconv.Atoi(args[i])
-            if err != nil {
-                showhelp()
-                return
-            }
-            threadnum = val
         } else if args[i] == "-w" {
-            i++
-            val, err := strconv.Atoi(args[i])
-            if err != nil {
-                showhelp()
-                return
-            }
-            way = val
-        } else if args[i] == "-c" {
             i++
             val, err := strconv.Atoi(args[i])
             if err != nil {
@@ -210,11 +191,6 @@ func main () {
         return
     }
     wg := sync.WaitGroup{}
-    ch := make(chan FileInfos, chanlen)
-    defer close(ch)
-    for i := 0 ; i < threadnum ; i++ { // 同时启动threadnum个协程
-        go run(ch, &wg, way, removeempty, delzerofile)
-    }
     filepath.Walk(folder, func (path string, info os.FileInfo, err error) error {
         if err != nil {
             fmt.Println(err)
@@ -222,9 +198,10 @@ func main () {
         }
         if info.IsDir() == false { // 只有是普通文件才计算与判断
             wg.Add(1)
-            ch <- FileInfos{info.Size(), path}
+            go run(info.Size(), path, way, removeempty, delzerofile, &wg)
         } else if removeempty {
-            removeemptyfolder(path)
+            wg.Add(1)
+            go removeemptyfolder(path, &wg)
         }
         return nil
     })
