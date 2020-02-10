@@ -15,7 +15,7 @@ go语言是跨平台语言，同时使用于windows，linux。并且生成的可
 
 # 使用参数
 -d folder 用于选择需要检查的文件夹  
--t thread number, default 10 用于设置同时运行的协程数量，默认为10  
+-t thread number 用于设置同时运行的协程数量，默认为4  
 -w handle way 用于指定处理方式  
 &emsp;&emsp;0为只是显示与提醒，其他什么都不做  
 &emsp;&emsp;1为删除新发现的那个，其他什么都不做  
@@ -26,6 +26,7 @@ go语言是跨平台语言，同时使用于windows，linux。并且生成的可
 -j 删除大小为0的文件  
 -v or --version 显示当前程序版本  
 -h or --help 显示帮助  
+eg: rdfind -d /home/wf -w 2 -t 8 -e -j  
 
 # 编译方法
 go build rdfind.go  
